@@ -8,7 +8,7 @@ import com.bitwig.extension.controller.api.ControllerHost;
 
 public class TorsoT1ExtensionDefinition extends ControllerExtensionDefinition
 {
-   private static final UUID DRIVER_ID = UUID.fromString("a00de46d-81b8-47a9-b9fa-ccbda8e76627");
+   private static final UUID DRIVER_ID = UUID.fromString("f4f4a9d2-8b0d-4db6-a2c4-4a5c0a3a5b55");
    
    public TorsoT1ExtensionDefinition()
    {
@@ -17,7 +17,7 @@ public class TorsoT1ExtensionDefinition extends ControllerExtensionDefinition
    @Override
    public String getName()
    {
-      return "TorsoT1";
+      return "T-1";
    }
    
    @Override
@@ -29,7 +29,7 @@ public class TorsoT1ExtensionDefinition extends ControllerExtensionDefinition
    @Override
    public String getVersion()
    {
-      return "0.1";
+      return "0.3";
    }
 
    @Override
@@ -47,7 +47,7 @@ public class TorsoT1ExtensionDefinition extends ControllerExtensionDefinition
    @Override
    public String getHardwareModel()
    {
-      return "TorsoT1";
+      return "T-1";
    }
 
    @Override
@@ -59,13 +59,13 @@ public class TorsoT1ExtensionDefinition extends ControllerExtensionDefinition
    @Override
    public int getNumMidiInPorts()
    {
-      return 16;
+      return 1;
    }
 
    @Override
    public int getNumMidiOutPorts()
    {
-      return 16;
+      return 1;
    }
 
    @Override
