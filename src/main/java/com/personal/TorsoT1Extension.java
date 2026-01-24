@@ -9,10 +9,23 @@ import com.bitwig.extension.controller.api.NoteInput;
 import com.bitwig.extension.controller.api.Preferences;
 import com.bitwig.extension.controller.api.SettableEnumValue;
 import com.bitwig.extension.controller.api.SettableRangedValue;
+import com.bitwig.extension.controller.api.SettableStringValue;
+import com.bitwig.extension.controller.api.Signal;
 import com.bitwig.extension.controller.api.Track;
 import com.bitwig.extension.controller.api.TrackBank;
 import com.bitwig.extension.controller.api.Transport;
 import com.bitwig.extension.controller.ControllerExtension;
+import java.io.File;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
 public class TorsoT1Extension extends ControllerExtension
 {
@@ -24,6 +37,8 @@ public class TorsoT1Extension extends ControllerExtension
    private static final boolean CC_RELATIVE = false;
    private static final int REMOTE_PAGE_COUNT = 8;
    private static final int TRACK_PREF_MAX = 128;
+   private static final String CONFIG_CATEGORY = "Config";
+   private static final String CONFIG_DEFAULT_FILENAME = "TorsoT1-config.xml";
    private static final String OPTION_SELECTED_DEVICE = "Selected device on track";
    private static final String TRACK_REMOTE_PREFIX = "Track Remotes Page ";
    private static final String PROJECT_REMOTE_PREFIX = "Project Remotes Page ";
@@ -45,6 +60,23 @@ public class TorsoT1Extension extends ControllerExtension
       mNoteInput.setShouldConsumeEvents(false);
 
       final Preferences preferences = host.getPreferences();
+      mConfigPathSetting = preferences.getStringSetting(
+         "Config file",
+         CONFIG_CATEGORY,
+         260,
+         getDefaultConfigFile().getPath()
+      );
+      final String currentPath = mConfigPathSetting.get();
+      final String legacyPath = new File(System.getProperty("user.home"), CONFIG_DEFAULT_FILENAME).getPath();
+      if (currentPath == null || currentPath.trim().isEmpty() || currentPath.equals(legacyPath))
+      {
+         mConfigPathSetting.set(getDefaultConfigFile().getPath());
+      }
+      mSaveConfigSignal = preferences.getSignalSetting("Save config", CONFIG_CATEGORY, "Save");
+      mLoadConfigSignal = preferences.getSignalSetting("Load config", CONFIG_CATEGORY, "Load");
+      mSaveConfigSignal.addSignalObserver(this::saveConfig);
+      mLoadConfigSignal.addSignalObserver(this::loadConfig);
+
       final String[] targetOptions = new String[1 + (REMOTE_PAGE_COUNT * 2)];
       targetOptions[0] = OPTION_SELECTED_DEVICE;
       for (int i = 0; i < REMOTE_PAGE_COUNT; i++)
@@ -245,6 +277,147 @@ public class TorsoT1Extension extends ControllerExtension
       }
    }
 
+   private boolean isValidTargetOption(final String target)
+   {
+      if (OPTION_SELECTED_DEVICE.equals(target))
+      {
+         return true;
+      }
+      if (target != null && target.startsWith(TRACK_REMOTE_PREFIX))
+      {
+         final int pageIndex = parsePageIndex(target, TRACK_REMOTE_PREFIX);
+         return pageIndex >= 0 && pageIndex < REMOTE_PAGE_COUNT;
+      }
+      if (target != null && target.startsWith(PROJECT_REMOTE_PREFIX))
+      {
+         final int pageIndex = parsePageIndex(target, PROJECT_REMOTE_PREFIX);
+         return pageIndex >= 0 && pageIndex < REMOTE_PAGE_COUNT;
+      }
+      return false;
+   }
+
+   private void saveConfig()
+   {
+      final String path = getConfigPath();
+      try
+      {
+         final File file = new File(path);
+         final File parent = file.getParentFile();
+         if (parent != null && !parent.exists())
+         {
+            parent.mkdirs();
+         }
+
+         final DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+         final DocumentBuilder builder = factory.newDocumentBuilder();
+         final Document doc = builder.newDocument();
+         final Element root = doc.createElement("TorsoT1Config");
+         root.setAttribute("version", "1");
+         doc.appendChild(root);
+
+         for (int i = 0; i < TRACK_COUNT; i++)
+         {
+            final Element channel = doc.createElement("Channel");
+            channel.setAttribute("index", String.valueOf(i + 1));
+            channel.setAttribute("btwTrk", String.valueOf(mChannelBtwTrkValues[i]));
+            channel.setAttribute("target", mChannelTargetValues[i]);
+            root.appendChild(channel);
+         }
+
+         final Transformer transformer = TransformerFactory.newInstance().newTransformer();
+         transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+         transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
+         transformer.transform(new DOMSource(doc), new StreamResult(file));
+         getHost().showPopupNotification("TorsoT1: Config saved");
+      }
+      catch (Exception e)
+      {
+         getHost().errorln("TorsoT1: Failed to save config: " + e.getMessage());
+         getHost().showPopupNotification("TorsoT1: Config save failed");
+      }
+   }
+
+   private void loadConfig()
+   {
+      final String path = getConfigPath();
+      final File file = new File(path);
+      if (!file.exists())
+      {
+         getHost().showPopupNotification("TorsoT1: Config not found");
+         return;
+      }
+
+      try
+      {
+         final DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+         final DocumentBuilder builder = factory.newDocumentBuilder();
+         final Document doc = builder.parse(file);
+         final NodeList channels = doc.getElementsByTagName("Channel");
+
+         for (int i = 0; i < channels.getLength(); i++)
+         {
+            final Element element = (Element)channels.item(i);
+            final int index = parsePositiveInt(element.getAttribute("index")) - 1;
+            if (index < 0 || index >= TRACK_COUNT)
+            {
+               continue;
+            }
+
+            final int btwTrk = parsePositiveInt(element.getAttribute("btwTrk"));
+            if (btwTrk >= 1 && btwTrk <= TRACK_PREF_MAX)
+            {
+               mChannelBtwTrkSettings[index].setRaw(btwTrk);
+               mChannelBtwTrkValues[index] = btwTrk;
+            }
+
+            final String target = element.getAttribute("target");
+            if (isValidTargetOption(target))
+            {
+               mChannelTargetSettings[index].set(target);
+               mChannelTargetValues[index] = target;
+            }
+         }
+
+         getHost().showPopupNotification("TorsoT1: Config loaded");
+      }
+      catch (Exception e)
+      {
+         getHost().errorln("TorsoT1: Failed to load config: " + e.getMessage());
+         getHost().showPopupNotification("TorsoT1: Config load failed");
+      }
+   }
+
+   private int parsePositiveInt(final String value)
+   {
+      try
+      {
+         final int parsed = Integer.parseInt(value);
+         return Math.max(parsed, 0);
+      }
+      catch (NumberFormatException e)
+      {
+         return 0;
+      }
+   }
+
+   private String getConfigPath()
+   {
+      final String path = mConfigPathSetting.get();
+      if (path == null || path.trim().isEmpty())
+      {
+         return getDefaultConfigFile().getPath();
+      }
+      return path.trim();
+   }
+
+   private File getDefaultConfigFile()
+   {
+      final File documentsDir = new File(System.getProperty("user.home"), "Documents");
+      final File bitwigDir = new File(documentsDir, "Bitwig Studio");
+      final File extensionsDir = new File(bitwigDir, "Extensions");
+      return new File(extensionsDir, CONFIG_DEFAULT_FILENAME);
+   }
+
    private Transport mTransport;
    private TrackBank mTrackBank;
    private CursorDevice[] mTrackDevices;
@@ -252,6 +425,9 @@ public class TorsoT1Extension extends ControllerExtension
    private CursorRemoteControlsPage[] mTrackRemotePages;
    private CursorRemoteControlsPage mProjectRemotePage;
    private NoteInput mNoteInput;
+   private SettableStringValue mConfigPathSetting;
+   private Signal mSaveConfigSignal;
+   private Signal mLoadConfigSignal;
    private SettableEnumValue[] mChannelTargetSettings;
    private SettableRangedValue[] mChannelBtwTrkSettings;
    private int[] mChannelBtwTrkValues;
