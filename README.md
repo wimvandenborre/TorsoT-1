@@ -1,0 +1,22 @@
+# TorsoT-1 Bitwig Extension
+
+Bitwig Studio controller extension for the Torso T-1. It maps T-1 CCs to Bitwig track remote controls and forwards transport MMC commands via Sysex.
+
+## Features
+- CC 70-83 map to 14 remote controls per track
+- MIDI channels 1-16 map to tracks 1-16
+- MMC transport: rewind, fast-forward, stop, play, record
+- Optional debug logging and relative CC mode in code
+
+## Build
+Requires Java 17 and Maven.
+
+```bash
+mvn install
+```
+
+The build produces a `.bwextension` and copies it to your Bitwig Extensions folder (see `pom.xml`).
+
+## Notes
+- Update the install path in `pom.xml` to match your Bitwig extensions directory.
+- Tweak `CC_START`, `CC_END`, or `TRACK_COUNT` in `src/main/java/com/personal/TorsoT1Extension.java` if your setup differs.

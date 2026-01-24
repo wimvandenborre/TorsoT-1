@@ -1,0 +1,4 @@
+/target/
+*.bwextension
+.DS_Store
+.vscode/
