@@ -17,6 +17,12 @@ mvn install
 
 The build produces a `.bwextension` and copies it to your Bitwig Extensions folder (see `pom.xml`).
 
+## Usage
+1. Connect the Torso T-1 and make sure Bitwig sees the MIDI ports.
+2. Build the extension (`mvn install`) or copy the generated `.bwextension` into your Bitwig Extensions folder.
+3. In Bitwig, add the controller: Settings -> Controllers -> Add Controller -> TorsoT1.
+4. Open a project with tracks; CC 70-83 on channels 1-16 will map to track remote controls.
+
 ## Notes
 - Update the install path in `pom.xml` to match your Bitwig extensions directory.
 - Tweak `CC_START`, `CC_END`, or `TRACK_COUNT` in `src/main/java/com/personal/TorsoT1Extension.java` if your setup differs.
