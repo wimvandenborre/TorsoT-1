@@ -187,28 +187,39 @@ public class TorsoT1Extension extends ControllerExtension
          OSC_CATEGORY,
          DEFAULT_OSC_SERVER_ENABLED
       );
-      mOscInPort = DEFAULT_OSC_IN_PORT;
-      mOscOutPort = DEFAULT_OSC_OUT_PORT;
-      mOscOutHost = DEFAULT_OSC_OUT_HOST;
+      mOscInPort = (int)Math.round(mOscInPortSetting.getRaw());
+      if (mOscInPort <= 0)
+      {
+         mOscInPort = DEFAULT_OSC_IN_PORT;
+      }
+      mOscOutPort = (int)Math.round(mOscOutPortSetting.getRaw());
+      if (mOscOutPort <= 0)
+      {
+         mOscOutPort = DEFAULT_OSC_OUT_PORT;
+      }
+      final String outHost = mOscOutHostSetting.get();
+      mOscOutHost = (outHost == null || outHost.trim().isEmpty()) ? DEFAULT_OSC_OUT_HOST : outHost.trim();
       mOscServerEnabled = DEFAULT_OSC_SERVER_ENABLED;
       mOscInPortSetting.addRawValueObserver(value -> {
          mOscInPort = (int)Math.round(value);
+         mOscServerAllowed = true;
          refreshOscServer();
       });
       mOscOutPortSetting.addRawValueObserver(value -> {
          mOscOutPort = (int)Math.round(value);
-         refreshOscConnection();
+         requestOscReconnect();
       });
       mOscOutHostSetting.addValueObserver(value -> {
          mOscOutHost = value;
-         refreshOscConnection();
+         requestOscReconnect();
       });
       mOscServerEnabledSetting.addValueObserver(value -> {
          mOscServerEnabled = value;
          refreshOscServer();
       });
-      refreshOscServer();
       refreshOscConnection();
+      mOscConnectAllowed = false;
+      mOscServerAllowed = false;
 
       // TODO: Perform your driver initialization here.
       // For now just show a popup notification for verification that it is running.
@@ -319,10 +330,10 @@ public class TorsoT1Extension extends ControllerExtension
 
       if (DEBUG_MIDI)
       {
-         final String trackInfo = trackIndex >= 0 ? (" track " + (trackIndex + 1)) : "";
+/*          final String trackInfo = trackIndex >= 0 ? (" track " + (trackIndex + 1)) : "";
          getHost().println("TorsoT1: ch=" + (channel + 1) + " cc=" + cc + " val=" + value
             + " -> " + targetLabel + trackInfo + " remote " + (controlIndex + 1)
-            + (CC_RELATIVE ? " (relative)" : " (absolute)"));
+            + (CC_RELATIVE ? " (relative)" : " (absolute)")); */
       }
 
       if (CC_RELATIVE)
@@ -547,6 +558,10 @@ public class TorsoT1Extension extends ControllerExtension
 
    private void refreshOscServer()
    {
+      if (!mOscServerAllowed)
+      {
+         return;
+      }
       if (mOscServer == null || mOscInPort <= 0 || !mOscServerEnabled)
       {
          return;
@@ -563,6 +578,10 @@ public class TorsoT1Extension extends ControllerExtension
 
    private void refreshOscConnection()
    {
+      if (!mOscConnectAllowed)
+      {
+         return;
+      }
       if (mOscModule == null)
       {
          return;
@@ -575,10 +594,26 @@ public class TorsoT1Extension extends ControllerExtension
       try
       {
          mOscConnection = mOscModule.connectToUdpServer(host, mOscOutPort, null);
+         if (DEBUG_MIDI)
+         {
+            getHost().println("TorsoT1: OSC connected to " + host + ":" + mOscOutPort);
+         }
       }
       catch (Exception e)
       {
          getHost().errorln("TorsoT1: Failed to connect OSC to " + host + ":" + mOscOutPort + ": " + e.getMessage());
+      }
+   }
+
+   private void requestOscReconnect()
+   {
+      if (mOscConnectAllowed)
+      {
+         refreshOscConnection();
+      }
+      else
+      {
+         getHost().println("TorsoT1: OSC Out settings changed; restart the extension to apply.");
       }
    }
 
@@ -590,6 +625,10 @@ public class TorsoT1Extension extends ControllerExtension
       }
       try
       {
+         if (DEBUG_MIDI)
+         {
+            getHost().println("TorsoT1 OSC send: " + address + " -> " + mOscOutHost + ":" + mOscOutPort);
+         }
          mOscConnection.sendMessage(address, args);
       }
       catch (IOException | OscInvalidArgumentTypeException e)
@@ -624,4 +663,6 @@ public class TorsoT1Extension extends ControllerExtension
    private int mOscOutPort;
    private String mOscOutHost;
    private boolean mOscServerEnabled;
+   private boolean mOscServerAllowed = true;
+   private boolean mOscConnectAllowed = true;
 }
